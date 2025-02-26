@@ -1,1 +1,19 @@
-<app-gifs-list [gifs]="gifService.trendingGifs()" />
+<div
+  class="h-screen overflow-y-scroll grid grid-cols-2 md:grid-cols-4 gap-4 py-4"
+  (scroll)="onScroll()"
+  #groupDiv
+>
+  @for (group of gifService.trendingGifGroup(); track $index) {
+  <div class="grid gap-4">
+    @for (gif of group; track gif.id) {
+    <div>
+      <img
+        [src]="gif.url"
+        [alt]="gif.title"
+        class="h-full w-full rounded-lg object-cover"
+      />
+    </div>
+    }
+  </div>
+  }
+</div>

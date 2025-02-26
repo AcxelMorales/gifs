@@ -1,7 +1,13 @@
 import { HttpClient } from '@angular/common/http';
-import { computed, effect, Inject, inject, Injectable, PLATFORM_ID, signal } from '@angular/core';
+import {
+  computed,
+  effect,
+  inject,
+  Injectable,
+  signal
+} from '@angular/core';
 
-import { map, Observable, tap } from 'rxjs';
+import { map, Observable, single, tap } from 'rxjs';
 
 import { environment } from '@envs/environment.development';
 
@@ -11,6 +17,8 @@ import type { GiphyResponse } from '../interfaces/giphy.interface';
 import { GifMapper } from '../mapper/gifs.mapper';
 
 const GIF_KEY = 'gifs';
+const LIMIT = 25;
+const BUNDLE = 'messaging_non_clips';
 
 const loadFromLocalStorage = (): Record<string, Gif[]> => {
   const gifsFromLocalStorage = localStorage.getItem(GIF_KEY) ?? '{}';
@@ -27,12 +35,21 @@ export class GifsService {
   private http: HttpClient = inject(HttpClient);
 
   trendingGifs = signal<Gif[]>([]);
-  trendingGifsLoading = signal(true);
+  trendingGifsLoading = signal(false);
+  private trendingPage = signal(0);
+
+  trendingGifGroup = computed<Gif[][]>(() => {
+    const groups = [];
+
+    for (let i = 0; i < this.trendingGifs().length; i += 3) {
+      groups.push(this.trendingGifs().slice(i, i + 3));
+    }
+
+    return groups;
+  });
 
   searchHistory = signal<Record<string, Gif[]>>(loadFromLocalStorage());
   searchHistoryKeys = computed((): string[] => Object.keys(this.searchHistory()));
-
-  constructor(@Inject(PLATFORM_ID) private platformId: any) {}
 
   saveGifsToLocalStorage = effect(() => {
     const historyString = JSON.stringify(this.searchHistory());
@@ -40,17 +57,23 @@ export class GifsService {
   });
 
   loadTrendingGifs(): void {
+    if (this.trendingGifsLoading()) return;
+
+    this.trendingGifsLoading.set(true);
+
     this.http.get<GiphyResponse>(`${environment.giphyUrl}/trending`, {
       params: {
         api_key: environment.giphyApiKey,
-        limit: 25,
-        offset: 0,
+        limit: LIMIT,
+        offset: this.trendingPage() * 20,
         rating: 'g',
-        bundle: 'messaging_non_clips'
+        bundle: BUNDLE
       }
     }).subscribe((res): void => {
       const gifs = GifMapper.mapGiphyItemsToGifArray(res.data);
-      this.trendingGifs.set(gifs);
+
+      this.trendingGifs.update(currentGifs => [...currentGifs, ...gifs]);
+      this.trendingPage.update(currentPage => currentPage + 1);
       this.trendingGifsLoading.set(false);
     });
   }
@@ -59,10 +82,10 @@ export class GifsService {
     return this.http.get<GiphyResponse>(`${environment.giphyUrl}/search`, {
       params: {
         api_key: environment.giphyApiKey,
-        limit: 25,
+        limit: LIMIT,
         offset: 0,
         lang: 'es',
-        bundle: 'messaging_non_clips',
+        bundle: BUNDLE,
         q: query
       }
     }).pipe(
